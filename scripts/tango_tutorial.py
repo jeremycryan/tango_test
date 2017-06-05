@@ -101,11 +101,11 @@ class TangoTutorialNode(object):
                     rospy.Time.now() - self.last_say_time > rospy.Duration(2.5))):
 
                     self.last_play_time = rospy.Time.now()
-                    system('aplay /home/jryan/catkin_ws/src/tango_test/scripts/beep.wav')
+                    system('aplay beep.wav')
 
 
             if self.start and self.distance_to_goal < 0.6:
-                system('aplay /home/jryan/catkin_ws/src/tango_test/scripts/ding.wav')
+                system('aplay ding.wav')
                 self.goal_found = True
 
             r.sleep()
