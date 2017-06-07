@@ -31,15 +31,19 @@ class AudioFeedback(object):
         self.yaw = angles[2]
 
     def run(self):
-        r = rospy.Rate(10)
+        lps = 10    #   loops per second!
+        r = rospy.Rate(lps)
         has_spoken = False
         while not rospy.is_shutdown():
 
             if self.x and not self.start:
                 self.start = True
-                distance = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-                rotation = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-                zd = [0, 0, 0, 0, 0]
+                jump_t = 0.5    #   duration (s) jump measurements are sampled
+                dist_t = 1.0    #                movement
+                rot_t = 1.0     #                rotation
+                distance = [0] * int(dist_t * lps)
+                rotation = [0] * int(rot_t * lps)
+                zd = [0] * int(jump_t * lps)
                 last_beep = rospy.Time.now()
                 beep_frequency = 1
                 last_whoosh = rospy.Time.now()
