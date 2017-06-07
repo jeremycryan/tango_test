@@ -2,6 +2,7 @@ import pyaudio
 import wave
 import time
 import sys
+from pydub import AudioSegment
 
 class Wav():
     def __init__(self, filename):

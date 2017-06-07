@@ -74,13 +74,13 @@ class AudioFeedback(object):
                     playing = True
                     #distance = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
                     #last_beep = rospy.Time.now()
-                elif total_distance > 0.4:
+                elif total_distance > 0.25:
                     pass
                 else:
                     self.mus.pause()
                     playing = False
 
-                if not self.mus.stream.is_active():
+                if not self.mus.stream.is_active() and playing:
                     self.mus.close()
                     self.mus = pw.Wav("ambience2.wav")
                     self.mus.play()
