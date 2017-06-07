@@ -16,33 +16,6 @@ class PlaneFitter(object):
     def __init__(self):
         rospy.init_node('floor_finder')
         rospy.Subscriber('/point_cloud', PointCloud, self.process_cloud)
-        self.listener = tf.TransformListener()  #   Starts listening
-
-    def find_distance(self, P, printing = True):
-        x_vals = P[:, 0]
-        y_vals = P[:, 1]
-        z_vals = P[:, 2]
-        add_mat = np.asarray([[1], [1], [0]])
-        M = np.matmul(abs(P), add_mat) ** 2 #   List of distances from center of camera frame
-        min_index = np.argmin(M)    #   Index of point closest to center of frame
-        if printing:
-            print "Center point xy: (%s, %s)" % (P[min_index, 0], P[min_index, 1])
-            #print "Max x: %s" % min(x_vals)
-            #print "Max y: %s" % max(x_vals)
-            print "Distance: %s" % round(P[min_index, 2], 2)
-        return round(P[min_index, 2], 2)
-
-    def depth_to_odom(self, points):
-        t_vals = (self.listener.lookupTransform('depth_camera', 'odom', rospy.Time.now())[0])
-        r_quat = (self.listener.lookupTransform('depth_camera', 'odom', rospy.Time.now())[1])
-        r_mat = tf.transformations.quaternion_matrix(r_quat)
-        len_points = points.shape[0]
-        ones = np.full((len_points, 1), 1)
-        print points.size, ones.size
-        P_cam = np.concatenate([points, ones], 1)
-        P_odom = np.matmul(P_cam, r_mat)
-        return P_odom[:, :3]
-
         self.m = Lock()
         self.pub = rospy.Publisher('/plane_finder', PointCloud, queue_size=10)
         self.pub_transformed = rospy.Publisher('/cloud_transformed', PointCloud, queue_size=10)
@@ -67,21 +40,6 @@ class PlaneFitter(object):
         #self.CurrP = np.asarray([(p.x, p.y, p.z) for p in self.actualP.points], dtype = np.float32)
         #print "got a cloud", self.CurrP.shape
         self.m.release()
-
-    def find_height(self, room_cloud, cam_cloud):
-        z_vals = room_cloud[:, 2]
-        floor_height = min(z_vals)
-        cam_origin = self.depth_to_odom([[0, 0, 0]])
-        cam_height = cam_origin[2]
-        return cam_height - floor_height
-
-    def process_cloud(self, msg):
-        P = np.asarray([[p.x, p.y, p.z] for p in msg.points])   #   Point cloud from depth cam
-        #print "got a cloud", P.shape, M.shape
-        d = self.find_distance(P, True)
-        room_cloud = self.depth_to_odom(P)
-        h = self.find_height(room_cloud, P)
-        print "Height: %s" % h
 
     def run(self):
         r = rospy.Rate(10)
@@ -201,17 +159,7 @@ class PlaneFitter(object):
             #self.newP = False
             r.sleep()
     def pcloud_transform(self, cloud, target_frame, get_points):
-        """        self.t = self.listener.getLatestCommonTime('/depth_camera', '/odom')
-        t_vals, r_quat = self.listener.lookupTransform("/depth_camera", "/odom", self.t)
-        transform = self.listener.fromTranslationRotation(t_vals, r_quat)
-        m = len(points)
-        d4points = np.hstack((points, np.ones((m,1))))
-        newpoints = np.matmul(transform, d4points.T)
-        for i in range(m):
-            cloud.points[i].x = d4points[i][0]
-            cloud.points[i].y = d4points[i][1]
-            cloud.points[i].z = d4points[i][2]
-        return points, cloud"""
+
         try:
             if np.mean([p.z for p in cloud.points]) > 10**3:
                 return None, None
@@ -228,16 +176,7 @@ class PlaneFitter(object):
             newcloud = None
             points = None
         return points, newcloud
-        """
-        t_vals = (self.listener.lookupTransform('/depth_camera', '/odom', self.t))[0]
-        r_quat = (self.listener.lookupTransform('/depth_camera', '/odom', self.t))[1]
-        r_mat = tf.transformations.quaternion_matrix(r_quat)
-        m = len(pointlist)
-        ones = np.full((m, 1), 1)
-        print len(pointlist), len(pointlist[0].), ones.shape
-        P_cam = np.hstack([pointlist, ones])
-        P_odom = np.matmul(P_cam, r_mat)
-        return P_odom[:,:3]"""
+
     def planetransform(self, plane, target_frame):
         t = self.listener.getLatestCommonTime('/odom', '/depth_camera')
         t_vals = (self.listener.lookupTransform('/odom', '/depth_camera', t))[0]
