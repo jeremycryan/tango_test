@@ -6,7 +6,7 @@ import numpy as np
 import pcl
 import tf
 
-class PlaneFitter(object):
+class FloorFinder(object):
     def __init__(self):
         rospy.init_node('floor_finder')
         rospy.Subscriber('/point_cloud', PointCloud, self.process_cloud)
@@ -58,5 +58,5 @@ class PlaneFitter(object):
             r.sleep()
 
 if __name__ == '__main__':
-    node = PlaneFitter()
+    node = Floor()
     node.run()
