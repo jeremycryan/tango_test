@@ -1,3 +1,4 @@
+
 from audiolazy import *
 
 def freq(name):
@@ -21,15 +22,17 @@ def freq(name):
     except:
         print "That is not a note."
 
-def delay(sig, delaynum, delayinterval, startamp):
+def delay(sig, delaynum=1, delayinterval=200, startamp=.6, rate = 44100):
   """ Simple feedforward delay effect """
+  s, Hz = sHz(rate)
+  ms = 1e-3 * s
   smix = Streamix()
   sig = thub(sig, delaynum) # Auto-copy 3 times (remove this line if using feedback)
   smix.add(0, sig)
   # To get a feedback delay, use "smix.copy()" below instead of both "sig"
   for i in range(1, delaynum):
       #print .3-(i/20)
-      smix.add(delayinterval* ms, startamp*(delaynum-i)/delaynum * sig)
+      smix.add(delayinterval * ms, startamp*(delaynum-i)/delaynum * sig)
   #smix.add(300 * ms, .3 * sig) # You can also try other constants
   #smix.add(360 * ms, .125 * sig)
   return smix
@@ -38,11 +41,17 @@ def delay(sig, delaynum, delayinterval, startamp):
   # or something alike (e.g. ensuring that duration outside of this
 # function), helping you to avoid an endless signal.
 
-def synth(freq):
-    rate = 44100 # Sampling rate, in samples/second
-    s, Hz = sHz(rate) # Seconds and hertz
+def synth(freq, rate = 44100):
+    s, Hz = sHz(rate)
+    return karplus_strong(freq * Hz)
+
+def player(strm, seconds, volume = .5, rate = 44100):
+    s, Hz = sHz(rate)
     ms = 1e-3 * s
-    return karplus_strong(freq)
+    strm *= volume
+    sound = strm.take(seconds*s)
+    with AudioIO(True) as p:
+        p.play(sound, rate = rate)
 
 if __name__ == '__main__':
     main()

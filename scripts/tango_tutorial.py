@@ -9,6 +9,8 @@ import random
 from visualization_msgs.msg import Marker
 import pyttsx
 from os import system
+from audiolazy import *
+import audio_controller as ac
 
 class TangoTutorialNode(object):
     def __init__(self):
@@ -95,20 +97,24 @@ class TangoTutorialNode(object):
                     #   If it has been ten seconds since last speech, give voice instructions
                     self.last_say_time = rospy.Time.now()
                     speech = self.det_speech(self.yaw, (self.x, self.y), (self.x_goal, self.y_goal))
-                    self.engine.say(speech)
+                    #self.engine.say(speech)
                     if not has_spoken:
                         a = self.engine.runAndWait()
                         self.engine.say("Hello.")
                         a = self.engine.runAndWait()
                     has_spoken = True
                 if ((not self.last_play_time or
-                    rospy.Time.now() - self.last_play_time > rospy.Duration(6.0/(1+math.exp(-self.distance_to_goal*.3))-2.8)) and
+                    rospy.Time.now() - self.last_play_time > rospy.Duration(3.0/(1+math.exp(-self.distance_to_goal*.3))-1.4)) and
                     (not self.last_say_time or
-                    rospy.Time.now() - self.last_say_time > rospy.Duration(2.5))):
+                    rospy.Time.now() - self.last_say_time > rospy.Duration(0))):
 
                     self.last_play_time = rospy.Time.now()
-                    #system('aplay beep.wav')
+                    freq = max([-900/(self.radius*2)*self.distance_to_goal+1000, 100])
+                    print(400-(freq/2.5))
+                    currsynth = ac.delay(ac.synth(freq), 3, delayinterval = 500-(freq/2.5))
+                    ac.player(currsynth, .8, volume = 1)#max(min(1.1-(freq/1000), 1), .1))
 
+                #self.last_say_time = rospy.Time.now()
 
             if self.start and self.distance_to_goal < 0.6:
                 #   If goal is reached, make a ding and generate new goal
