@@ -2,23 +2,28 @@
 
 import rospy
 from sensor_msgs.msg import PointCloud
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseStamped, Pose, Point, Vector3
 import numpy as np
 import pcl
 import tf
 from threading import Lock
 import time
+from std_msgs.msg import Header, ColorRGBA
+from visualization_msgs.msg import Marker
 #import copy
 import tf
 import math
+import audio_controller as ac
 
 class PlaneFitter(object):
     def __init__(self):
         rospy.init_node('floor_finder')
         rospy.Subscriber('/point_cloud', PointCloud, self.process_cloud)
+        rospy.Subscriber('/tango_pose', PoseStamped, self.process_pose)
         self.m = Lock()
         self.pub = rospy.Publisher('/plane_finder', PointCloud, queue_size=10)
         self.pub_transformed = rospy.Publisher('/cloud_transformed', PointCloud, queue_size=10)
+        self.vis_pub = rospy.Publisher('/plane_lines', Marker, queue_size=10)
 
         self.listener = tf.TransformListener()
         self.CurrP = None
@@ -31,6 +36,13 @@ class PlaneFitter(object):
         self.ycutoff = 0;
         self.saved_plane_model = None;
         self.untransformed_saved_plane_model = None;
+        self.position = None;
+        #self.synth = synth(440)
+        self.walldist = 0;
+        self.last_sound_time = rospy.Time.now();
+        self.linepoints = []
+        color = ColorRGBA(.25,.42,.88,1)
+        self.colors = [color, color]
         #self.newP = False;
 
     def process_cloud(self, msg):
@@ -41,10 +53,20 @@ class PlaneFitter(object):
         #print "got a cloud", self.CurrP.shape
         self.m.release()
 
+    def process_pose(self, msg):
+        self.m.acquire()
+        #print "hello"
+        self.position = msg.pose.position;
+        self.m.release()
+
+    def plane_distance(self, saved_plane_model, position):# = self.saved_plane_model, position = self.position):
+        newdist = abs(position.x*saved_plane_model[0] + position.y*saved_plane_model[1] + position.z*saved_plane_model[2] + saved_plane_model[3])/math.sqrt(math.pow(saved_plane_model[0],2) + math.pow(saved_plane_model[1],2) + math.pow(saved_plane_model[2],2))
+        return newdist
+
     def run(self):
         r = rospy.Rate(10)
         while not rospy.is_shutdown():
-            if not self.actualP is None:
+            if not self.actualP is None and not self.position is None:
                 #Setting Point Cloud
                 self.m.acquire()
                 #set_pose
@@ -78,7 +100,7 @@ class PlaneFitter(object):
                             #print i
                             check = False
                             usesave = None
-                            indices, plane_model = seg.segment()
+                            indices, plane_model = seg.segment()#segment()
                             if self.saved_plane_model is not None :
                                 if (abs(plane_model[0]-self.saved_plane_model[0]) < .075 and
                                     abs(plane_model[1]-self.saved_plane_model[1]) < .075 and
@@ -90,8 +112,15 @@ class PlaneFitter(object):
                             if len(indices) < self.robustThreshold:
                                 #print len(indices)
                                 print("No Robust Planes")
+                                if self.saved_plane_model:
+                                    newdist = self.plane_distance(self.saved_plane_model, self.position) #self.saved_plane_model, self.position)
+                                else:
+                                    newdist = None
+                                #print "wall_distance: " + str(newdist)
+                                #closestpoint = self.getclosestpoint(self.saved_plane_model)
+                                self.linepoints = self.gettangentpoints(self.saved_plane_model)
 
-                                print "wall_distance: " + str(abs(self.untransformed_saved_plane_model[3]))
+                                self.walldist = newdist
                                 break
                             if abs(plane_model[2]) < self.verticalityThreshold or match:
                                 #new_plane_model = None
@@ -113,7 +142,7 @@ class PlaneFitter(object):
                                 #    self.saved_plane_model = plane_model
                                 #    self.untransformed_saved_plane_model = new_plane_model
                                 if check:
-                                    if abs(new_plane_model[3]) > abs(self.untransformed_saved_plane_model[3]):
+                                    if abs(new_plane_model[3]) > self.walldist:#abs(self.untransformed_saved_plane_model[3]):
                                         usesave = True
                                     else:
                                         usesave = False
@@ -121,14 +150,22 @@ class PlaneFitter(object):
                                     print("SAVE USED")
                                     #print "plane model: " + str(self.untransformed_saved_plane_model)
                                     #new_plane_model = planetransform(plane_model, "/depth_camera")
-                                    print "wall_distance: " + str(abs(self.untransformed_saved_plane_model[3]))
+                                    if self.saved_plane_model:
+                                        newdist = self.plane_distance(self.saved_plane_model, self.position) #self.saved_plane_model, self.position)
+                                    else:
+                                        newdist = None #####abs(self.position.x*self.saved_plane_model[0] + self.position.y*self.saved_plane_model[1] + self.position.z*self.saved_plane_model[2] + self.saved_plane_model[3])/math.sqrt(math.pow(self.saved_plane_model[0],2) + math.pow(self.saved_plane_model[1],2) + math.pow(self.saved_plane_model[2],2))
+                                    self.linepoints = self.gettangentpoints(self.saved_plane_model)
+                                    self.walldist = newdist
                                     break
 
                                 #self.pub.publish(actualPCopy)
 
                                 #print "plane model: " + str(plane_model)
                                 #print "plane_size: " + str(self.cloud_plane.size)
-                                print "wall_distance: " + str(abs(new_plane_model[3]))
+
+                                #print "wall_distance: " + str(abs(new_plane_model[3]))
+                                self.linepoints = self.gettangentpoints(plane_model)
+                                self.walldist = new_plane_model[3]
                                 self.saved_plane_model = plane_model
                                 self.untransformed_saved_plane_model = new_plane_model
 
@@ -147,8 +184,25 @@ class PlaneFitter(object):
                                 continue
                             #self.cloud_plane.to_file("cloud_plane.pcd")
                     except Exception as inst:
-                        pass
+                        print inst
+                        #pass
                         #print inst, i
+                    print "wall_distance: " + str(abs(self.walldist))
+                    self.vis_pub.publish(Marker(header=Header(frame_id="odom", stamp=self.actualP.header.stamp),
+                                                type=Marker.LINE_LIST,
+                                                ns = 'current_plane',
+                                                scale=Vector3(x=.1,y=.1,z=.1),
+                                                points = self.linepoints,
+                                                colors = self.colors))
+                    if rospy.Time.now()-self.last_sound_time > rospy.Duration(2) and abs(self.walldist) > .5:
+                        self.last_sound_time = rospy.Time.now()
+                        freq = max(min(100*math.exp((abs(self.walldist)/2))+330, 1200), 330)
+                        print freq
+                        self.synth = ac.synth(freq)
+                        self.synth = ac.delay(self.synth, 3, 400, .5)
+                        ac.player(self.synth, seconds=1.5, volume = .75)
+
+
                 self.actualP = None
                 self.UseP = None
                 self.m.release()
@@ -167,7 +221,7 @@ class PlaneFitter(object):
             if np.isnan(np.mean([p.z for p in newcloud.points])):
                 return None, None
             self.pub_transformed.publish(newcloud)
-            if get_points is True:
+            if get_points:
                 points = np.asarray([(p.x, p.y, p.z) for p in newcloud.points], dtype = np.float32)
             else:
                 points = None
@@ -189,6 +243,33 @@ class PlaneFitter(object):
         distance = math.sqrt(math.pow(newperppoint[0],2) + math.pow(newperppoint[1],2) + math.pow(newperppoint[2],2))
         newperppoint = [i/distance for i in newperppoint]
         return newperppoint + [distance]
+
+    def getclosestpoint(self, plane):
+        d = plane[3]
+        point = [-i*d for i in plane[0:3]]#[plane[0]*d+position.x,plane[1]*d+position.y,plane[2]*d+position.z]
+        point[2] = 0
+        return point
+
+    def gettangentpoints(self,plane):
+        point = self.getclosestpoint(plane)
+        perplinedir = [-plane[1], plane[0], 0]
+        print "plane parameters", plane
+        p1=[5*perplinedir[i]+point[i] for i in range(3)]
+        p2=[-5*perplinedir[i]+point[i] for i in range(3)]
+        return [Point(*p1), Point(*p2)]
+
+    """def pointtransform(self, plane, target_frame):
+        t = self.listener.getLatestCommonTime('/odom', '/depth_camera')
+        t_vals = (self.listener.lookupTransform('/odom', '/depth_camera', t))[0]
+        r_quat = (self.listener.lookupTransform('/odom', '/depth_camera', t))[1]
+        r_mat = tf.transformations.quaternion_matrix(r_quat)
+        m = 1
+        perppoint = getclosestpoint(plane)#plane[0:3] * plane[3]
+        useperppoint = np.array(perppoint + [1]).T
+        newperppoint = np.matmul(r_mat, useperppoint)
+        distance = math.sqrt(math.pow(newperppoint[0],2) + math.pow(newperppoint[1],2) + math.pow(newperppoint[2],2))
+        newperppoint = [i/distance for i in newperppoint]
+        return newperppoint + [distance]"""
 
 
 if __name__ == '__main__':
